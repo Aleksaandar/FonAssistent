@@ -1,0 +1,363 @@
+﻿@page "/programskiJezici"
+@using IMPOLAssistant.Shared.Models
+@using FONAssistant.UI.Layout
+@layout MainLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@using System.Net.Http.Headers
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+@inject IConfiguration Configuration
+@inject BlazorSpinner.SpinnerService _spinnerService
+@inject HttpClient Http
+@inject JWTAuthStateProvider AuthStateProvider
+
+<MudContainer>
+    <MudPaper Style="outline: none; background-color: transparent; border: none; box-shadow: none;">
+        <div class="flex-container">
+            <MudText Typo="Typo.h5">Chat Assistant za ucenje Programskih jezika</MudText>
+            <img src="images/fon logo.png" alt="Description of the image" class="side-image" />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" @onclick="HandleLogout" Class="logout-button">Logout</MudButton>
+
+        </div>
+        <p> <h5>Zdravo! Kako mogu da vam pomognem danas?</h5></p>
+        @if ((state?.User?.Identity?.IsAuthenticated ?? false) && state.User.IsInRole("Admin"))
+        {
+            <MudFileUpload T="IBrowserFile" FilesChanged="UploadFiles" Class="file-upload-container">
+                <ActivatorContent>
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.CloudUpload">
+                        Unesite tekstualne dokumente
+                    </MudButton>
+                </ActivatorContent>
+            </MudFileUpload>
+
+            <div class="link-input-container">
+                <MudTextField @bind-Value="Search" Label="Unesite link ovde:" Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.AirlineStops" AdornmentColor="Color.Primary" Class="link-upload-container" />
+                <MudIconButton Icon="@Icons.Material.Filled.AddCircle" Color="Color.Primary" aria-label="submit-link" OnClick="SubmitLink" />
+            </div>
+        }
+    </MudPaper>
+
+
+
+    <MudPaper Class="chat-history" id="chatHistory" Style="outline: none; background-color: transparent; border: none; box-shadow: none;">
+
+        <div class="message-container">
+            @foreach (var message in messages)
+            {
+                <div class="message-box">
+                    <MudText Typo="Typo.body1">@message.Content (@message.Timestamp)</MudText>
+                </div>
+            }
+        </div>
+    </MudPaper>
+
+    <MudContainer Class="chat-input">
+        @*     <MudSelect Dense="true" T="string" Label="Odaberi tip Asistenta" Variant="Variant.Outlined" @bind-Value="SelectedOption">
+        <MudSelectItem Value="@("Tekstualni Asistent")" />
+        <MudSelectItem Value="@("Asistent za Excel tabele")" />
+
+        </MudSelect> *@
+
+        <MudTextField T="string" Label="Unesite pitanje ovde:" Variant="Variant.Text" AutoGrow @bind-Value="userInput" />
+        <MudButton OnClick="SendMessage" Class="custom-button">Pošalji</MudButton>
+
+    </MudContainer>
+
+</MudContainer>
+
+@code {
+    private string userInput;
+
+    private string SelectedOption = "Tekstualni Asistent";
+    private String Search;
+    private string nazivDokumenta = "";
+    private const long MaxFileSize = 15 * 1024 * 1024;
+
+    private List<Message> messages = new List<Message>
+    {
+
+    };
+
+    protected override void OnInitialized()
+    {
+        nazivDokumenta = Configuration["DocumentIndexes:ProgramskiJezici"];
+        Console.WriteLine($"Naziv dokumenta iz konfiguracije:"+nazivDokumenta);
+
+    }
+    private AuthenticationState? state = null;
+
+    protected override async Task OnInitializedAsync()
+    {
+
+        this.state = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (!this.state.User.Identity.IsAuthenticated)
+        {
+            Navigation.NavigateTo("/login");
+
+        }
+
+    }
+
+    private async Task HandleLogout()
+    {
+        await AuthStateProvider.MarkUserAsLoggedOut();
+        Navigation.NavigateTo("/login");
+    }
+    private async Task UploadFiles(IBrowserFile file)
+    {
+        _spinnerService.Show();
+        if (file == null || file.Size > MaxFileSize)
+        {
+            Console.WriteLine($"File is too large. Maximum size is {MaxFileSize / 1024 / 1024} MB.");
+            return;
+        }
+
+        string documentId = Guid.NewGuid().ToString();
+
+
+        var content = new MultipartFormDataContent();
+        var streamContent = new StreamContent(file.OpenReadStream(MaxFileSize));
+        streamContent.Headers.ContentType = new MediaTypeHeaderValue(file.ContentType);
+        content.Add(streamContent, "file", file.Name);
+        content.Add(new StringContent(documentId), "documentId");
+        content.Add(new StringContent(nazivDokumenta), "index");
+
+        var response = await Http.PostAsync("https://localhost:7202/api/KernelMemory/import-document", content);
+
+        if (response.IsSuccessStatusCode)
+        {
+            _spinnerService.Hide();
+            Snackbar.Add("Dokument je uspešno importovan.", Severity.Success);
+            Console.WriteLine("File uploaded successfully.");
+        }
+        else
+        {
+            _spinnerService.Hide();
+            Snackbar.Add("Importovanje dokumenta nije uspelo.", Severity.Error);
+            Console.WriteLine($"File upload failed: {await response.Content.ReadAsStringAsync()}");
+        }
+    }
+    private async Task SendMessage()
+    {
+        _spinnerService.Show();
+        if (!string.IsNullOrEmpty(userInput))
+        {
+            HttpResponseMessage response = null;
+            var userMessage = new Message { Content = userInput, Timestamp = DateTime.Now };
+            if (SelectedOption == "Tekstualni Asistent")
+            {
+                response = await Http.PostAsJsonAsync($"https://localhost:7202/api/Chat/send?index={nazivDokumenta}", userMessage);
+
+            }
+            else if (SelectedOption == "Asistent za Excel tabele")
+            {
+                response = await Http.PostAsJsonAsync("https://localhost:7202/api/Chat/send-legura", userMessage);
+            }
+
+            if (response != null && response.IsSuccessStatusCode)
+            {
+                var responseStream = await response.Content.ReadFromJsonAsync<IAsyncEnumerable<Message>>();
+                await foreach (var message in responseStream)
+                {
+                    messages.Add(message);
+                }
+                _spinnerService.Hide();
+                await JS.InvokeVoidAsync("scrollPageToBottom");
+                userInput = string.Empty;
+            }
+
+        }
+
+    }
+    private async Task SubmitLink()
+    {
+        _spinnerService.Show();
+        if (!string.IsNullOrEmpty(Search))
+        {
+            var request = new ImportWebPageRequest { Url = Search, DocId = Guid.NewGuid().ToString() };
+            var response = await Http.PostAsJsonAsync($"https://localhost:7202/api/KernelMemory/import-webpage?index={nazivDokumenta}", request);
+
+            if (response.IsSuccessStatusCode)
+            {
+                _spinnerService.Hide();
+                Snackbar.Add("Web stranica je uspešno importovana.", Severity.Success);
+                Console.WriteLine("Web page imported successfully.");
+                Search = string.Empty;
+
+            }
+            else
+            {
+                _spinnerService.Hide();
+                Snackbar.Add("Importovanje web stranice nije uspelo.", Severity.Error);
+                Console.WriteLine("Failed to import the web page.");
+
+            }
+        }
+    }
+
+
+    public class ImportWebPageRequest
+    {
+        public string Url { get; set; }
+        public string DocId { get; set; }
+    }
+
+
+}
+<style>
+    .flex-container {
+        margin-left: -10rem;
+        width: 130%;
+    }
+
+    .logout-button {
+        margin-left: 50rem;
+    }
+
+    .file-upload-container {
+        margin-left: -10.5rem;
+    }
+
+
+    .link-upload-container {
+        margin-top: 4rem;
+        width: 25%;
+        margin-left: -10.5rem;
+    }
+
+
+    .link-input-container {
+        margin-top: 2rem;
+        width: 25%;
+        display: flex;
+        align-items: center;
+    }
+
+    .chat-history {
+        height: 100%;
+        outline: n;
+        padding: 16px;
+        background-color: #f9f9f9;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        overflow-y: auto;
+        margin-bottom: 150px;
+    }
+
+    h5 {
+        margin-top: 0.5rem;
+        margin-left: -10rem;
+    }
+
+
+
+    .chat-input {
+        position: fixed;
+        bottom: 3rem;
+        left: 18%;
+        right: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 8px;
+        background-color: #f0f0f0;
+        border-radius: 24px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        max-width: 30%;
+        margin-top: 4rem;
+    }
+
+    .message-container {
+        width: 50%;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        overflow-y: auto;
+    }
+
+    .message {
+        margin: 8px 0;
+        background-color: #e0e0e0;
+        padding: 8px 16px;
+        border-radius: 12px;
+        max-width: 80%;
+        text-align: center;
+    }
+
+    .custom-input {
+        flex-grow: 1;
+        margin-right: 8px;
+        border: none;
+        padding: 12px;
+        border-radius: 24px;
+        height: 100px;
+        box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
+    }
+
+        .custom-input input {
+            border: none !important;
+            outline: none !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+            width: 500px;
+            background-color: transparent !important;
+        }
+
+    .custom-button {
+        padding: 12px 20px;
+        border-radius: 24px;
+        border: none;
+        background-color: #007bff;
+        color: white;
+        cursor: pointer;
+        transition: background-color 0.3s ease;
+    }
+
+        .custom-button:hover {
+            background-color: #0056b3;
+        }
+
+        .custom-button:focus {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
+        }
+
+    .flex-container {
+        display: flex;
+        align-items: center;
+    }
+
+    .side-image {
+        margin-left: 10px;
+        max-width: 100px;
+        height: auto;
+    }
+
+    .message-box {
+        background-color: #ffffff;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 12px;
+        margin: 8px 0;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        max-width: 80%;
+        word-wrap: break-word;
+    }
+
+        .message-box .mud-text {
+            margin: 0;
+        }
+
+    .mud-select {
+        margin-left: -15rem;
+    }
+
+</style>

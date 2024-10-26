@@ -1,0 +1,109 @@
+﻿@using IMPOLAssistant.Shared.Models
+@using Microsoft.AspNetCore.Components.Authorization
+@using FONAssistant.Shared.Models;
+@inject NavigationManager Navigation
+@inject JWTAuthStateProvider AuthStateProvider
+@inject HttpClient Http
+@using MudBlazor
+
+<div class="navbar">
+
+    <div class="container-fluid">
+        <a class="navbar-brand" href="">Study Assistent</a>
+        <button title="Navigation menu" class="navbar-toggler" @onclick="ToggleNavMenu">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+    </div>
+</div>
+
+<div class="@NavMenuCssClass nav-scrollable" @onclick="ToggleNavMenu">
+    <nav class="flex-column">
+     
+        <div class="nav-item px-3">
+        
+            @if (state?.User?.Identity?.IsAuthenticated ?? false)
+            {
+                 @foreach (var predmet in predmeti)
+    {
+                    <MudNavLink href="@($"/predmet/{predmet.Id}")">
+            @predmet.Naziv
+           
+        </MudNavLink>
+    }
+
+@* 
+                    <MudNavLink class="mud-nav-link" href="/">
+                       <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Ekonomija
+                   </MudNavLink>
+                <MudNavLink class="mud-nav-link" href="/programskiJezici">
+                    <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Programski jezici
+                </MudNavLink>
+                   <MudNavLink class="mud-nav-link" href="/osnoveKvaliteta">
+                       <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Osnove kvaliteta
+                   </MudNavLink>
+                <MudNavLink class="mud-nav-link" href="/aros">
+                    <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> AROS
+                </MudNavLink>
+                   <MudNavLink class="mud-nav-link" href="/osnoviOrganizacije">
+                       <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Osnovi organizacije
+                   </MudNavLink>  *@
+            }
+
+        </div>
+
+    </nav>
+</div>
+
+@code {
+    private bool collapseNavMenu = true;
+    private List<Predmet> predmeti = new();
+    private AuthenticationState? state = null;
+    private string SelectedOption="Ekonomija";
+    private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
+
+
+    private void ToggleNavMenu()
+    {
+        collapseNavMenu = !collapseNavMenu;
+    }
+
+    protected override async Task OnInitializedAsync()
+
+    {
+        predmeti = await Http.GetFromJsonAsync<List<Predmet>>("https://localhost:7202/api/Predmet");
+        this.state = await AuthStateProvider.GetAuthenticationStateAsync();
+        AuthStateProvider.AuthenticationStateChanged += OnAuthenticationStateChanged;
+    }
+
+    private async void OnAuthenticationStateChanged(Task<AuthenticationState> task)
+    {
+        this.state = await task;
+        StateHasChanged();
+    }
+}
+<style>
+    .nav-scrollable {
+        background-color: #204490;
+    }
+
+    .mud-select{
+        text-decoration: none !important;
+        vertical-align: middle;
+        margin-left:3rem;
+        width: 110%;
+    }
+
+    .mud-nav-link {
+        text-decoration: none !important;
+        vertical-align: middle;
+        width: 110%;
+    }
+
+    .navbar {
+        background-color: #f7f7f7;
+    }
+
+    .bi {
+        vertical-align: middle;
+    }
+</style>

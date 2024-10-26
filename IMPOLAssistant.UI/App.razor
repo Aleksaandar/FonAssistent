@@ -1,0 +1,48 @@
+﻿@using FONAssistant.UI.Pages
+@using Microsoft.AspNetCore.Components.Authorization
+@inject JWTAuthStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+<CascadingAuthenticationState>
+<Router AppAssembly="@typeof(App).Assembly">
+    <Found Context="routeData">
+        <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)">
+                <NotAuthorized>
+                <h3>Niste ulogovani.</h3>
+                @if (!state.User.Identity.IsAuthenticated)
+                {
+                    <RedirectToLogin/>
+                }
+                </NotAuthorized>
+            </AuthorizeRouteView>
+        <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+    </Found>
+
+    <NotFound>
+        <PageTitle>Not found</PageTitle>
+        <LayoutView Layout="@typeof(MainLayout)">
+            <p role="alert">Izvinjavamo se, nema ničega na ovoj adresi.</p>
+        </LayoutView>
+    </NotFound>
+</Router>
+</CascadingAuthenticationState>
+
+@code {
+    private AuthenticationState? state = null;
+
+    protected override async Task OnInitializedAsync()
+
+    {
+
+        this.state = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (!state.User.Identity.IsAuthenticated)
+        {
+
+            Navigation.NavigateTo("/login");
+        }
+        else
+        {
+            Navigation.NavigateTo("/predmet/1");
+        }
+
+    }
+}

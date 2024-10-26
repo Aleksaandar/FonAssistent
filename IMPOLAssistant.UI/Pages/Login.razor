@@ -1,0 +1,102 @@
+﻿@page "/login"
+@using Blazored.LocalStorage
+@using IMPOLAssistant.API.Models
+@using IMPOLAssistant.Shared.Models
+@using System.IdentityModel.Tokens.Jwt
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
+
+@inject NavigationManager NavigationManager
+@inject JWTAuthStateProvider authProvider
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+@layout MainLayout
+@inject HttpClient Http
+@inject ILocalStorageService localStorage
+<h3>Login</h3>
+
+@if (!string.IsNullOrEmpty(ErrorMessage))
+{
+    <p>@ErrorMessage</p>
+}
+<div class="login-container">
+    <form>
+        <MudTextField @bind-Value="Username" Label="Username" Variant="Variant.Outlined" Class="username-field"></MudTextField>
+        <MudTextField @bind-Value="Password" Label="Password" Variant="Variant.Outlined" InputType="@PasswordInput" Adornment="Adornment.End" AdornmentIcon="@PasswordInputIcon" OnAdornmentClick="ButtonTestclick" AdornmentAriaLabel="Show Password" Class="password-field" />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="button-login" @onclick="HandleLogin">Login</MudButton>
+    </form>
+</div>
+
+@code {
+    private string CurrentUserRole { get; set; } = string.Empty;
+    private string Username { get; set; } = string.Empty;
+    private string Password { get; set; } = string.Empty;
+  
+    private string ErrorMessage;
+    bool isShow;
+    InputType PasswordInput = InputType.Password;
+    string PasswordInputIcon = Icons.Material.Filled.VisibilityOff;
+
+    void ButtonTestclick()
+    {
+        @if (isShow)
+        {
+            isShow = false;
+            PasswordInputIcon = Icons.Material.Filled.VisibilityOff;
+            PasswordInput = InputType.Password;
+        }
+        else
+        {
+            isShow = true;
+            PasswordInputIcon = Icons.Material.Filled.Visibility;
+            PasswordInput = InputType.Text;
+        }
+    }
+    private async Task HandleLogin()
+    {
+        var loginRequest = new { this.Username, this.Password };
+        var response = await Http.PostAsJsonAsync("https://localhost:7202/api/auth/login", loginRequest);
+
+        if (response.IsSuccessStatusCode)
+        {
+            var result = await response.Content.ReadFromJsonAsync<LoginResponse>();
+            if (result != null)
+                await authProvider.MarkUserAsAuthenticated(result.Token);
+        }
+        else
+        {
+            Snackbar.Add("Invalid username or password.", Severity.Error);
+            return;
+        }
+        NavigationManager.NavigateTo("/predmet/1");
+       
+    }
+
+}
+<style>
+
+    .login-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        margin-top: 21rem;
+    }
+
+    .button-login {
+        margin-top: 2rem;
+        width: 10rem;
+        height: 3rem;
+        margin-left: 10rem;
+    }
+
+    .username-field {
+        width: 30rem;
+    }
+
+    .password-field {
+        width: 30rem;
+    }
+
+</style>
+
